@@ -200,8 +200,8 @@ private:
             std::vector<wxPoint> poly(count);
 
             for (int i = 0; i < terrain.GetPointCount(); ++i) {
-                Point p = terrain.GetPoint(i);
-                poly[i] = WorldToScreen(Vector(p.x, p.z));
+                Vector p = terrain.GetPoint(i);
+                poly[i] = WorldToScreen(p);
             }
 
             int w, h;
@@ -342,8 +342,8 @@ private:
         dc.SetPen(wxPen(wxColour(100, 100, 100), 1));
 
         float leg_length = leg_len_px;
-        int   leg_y = y + (int)body_half_h_px;
-        int   foot_r = (int)(scale * 0.06f);
+        int leg_y = y + (int)body_half_h_px;
+        int foot_r = (int)(scale * 0.06f);
 
         float angle_deg = 15.0f;
         float dx_leg = leg_length * std::tan(angle_deg * 3.14159265f / 180.0f);
@@ -597,30 +597,30 @@ public:
         right->Add(status_text, 0, wxEXPAND | wxALL, 5);
         right->Add(fuel_text, 0, wxEXPAND | wxALL, 5);
 
-        -
-        right->Add(new wxStaticLine(main, wxID_ANY), 0, wxEXPAND | wxALL, 5);
-        dbg_title = new wxStaticText(main, wxID_ANY, "Autopilot debug");
-        dbg_title->SetForegroundColour(*wxBLACK);
-        right->Add(dbg_title, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 5);
+        
+        // right->Add(new wxStaticLine(main, wxID_ANY), 0, wxEXPAND | wxALL, 5);
+        // dbg_title = new wxStaticText(main, wxID_ANY, "Autopilot debug");
+        // dbg_title->SetForegroundColour(*wxBLACK);
+        // right->Add(dbg_title, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 5);
 
-        wxFont dbg_font = dbg_title->GetFont();
-        dbg_font.SetPointSize(8);
-        dbg_font.SetWeight(wxFONTWEIGHT_NORMAL);
+        // wxFont dbg_font = dbg_title->GetFont();
+        // dbg_font.SetPointSize(8);
+        // dbg_font.SetWeight(wxFONTWEIGHT_NORMAL);
 
-        auto make_dbg_line = [&](wxStaticText*& out) {
-            out = new wxStaticText(main, wxID_ANY, "");
-            out->SetFont(dbg_font);
-            out->SetForegroundColour(*wxBLACK);
-            right->Add(out, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 5);
-        };
+        // auto make_dbg_line = [&](wxStaticText*& out) {
+        //     out = new wxStaticText(main, wxID_ANY, "");
+        //     out->SetFont(dbg_font);
+        //     out->SetForegroundColour(*wxBLACK);
+        //     right->Add(out, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, 5);
+        // };
 
-        make_dbg_line(dbg_phase);
-        make_dbg_line(dbg_target);
-        make_dbg_line(dbg_radar);
-        make_dbg_line(dbg_gate_like);
-        make_dbg_line(dbg_angle);
-        make_dbg_line(dbg_thrust);
-        make_dbg_line(dbg_legs);
+        // make_dbg_line(dbg_phase);
+        // make_dbg_line(dbg_target);
+        // make_dbg_line(dbg_radar);
+        // make_dbg_line(dbg_gate_like);
+        // make_dbg_line(dbg_angle);
+        // make_dbg_line(dbg_thrust);
+        // make_dbg_line(dbg_legs);
 
         root->Add(left,  1, wxEXPAND);
         root->Add(right, 0, wxEXPAND | wxALL, 5);
@@ -838,11 +838,16 @@ private:
                 }
                 lander.setTargetAngleDeg(0.0f);
             }
+            float WIND_STRENGTH = 0.2f;      //среда
+            float WIND_CROSS_SECTION = 2.5f; // площадь поперечного сечения
+            float WIND_OPPOSITION = 1.2f;      // прямоугольник
+            float WIND_COEFF = WIND_STRENGTH * WIND_CROSS_SECTION * WIND_OPPOSITION;
+
 
             wind_speed = wind_slider ? wind_slider->GetValue() : 0.0f;
             if (std::fabs(wind_speed) > 0.01f) {
                 LanderState& Ws = lander.stateRef();
-                Ws.v.x += wind_speed * 0.04f * Constants::DT;
+                Ws.v.x += (wind_speed * WIND_COEFF / Constants::DRY_MASS) * Constants::DT ;
             }
 
             lander.update(Constants::DT);
