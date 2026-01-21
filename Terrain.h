@@ -1,47 +1,36 @@
 #ifndef TERRAIN_H
 #define TERRAIN_H
 
-#include <vector>
-#include <algorithm>
-#include <cmath>
+#include <algorithm>   
+#include <cmath>       
 
-#include "Vector.h"
-
-class Point {
-public:
-    float x, z;
-    Point(float x=0, float z=0) : x(x), z(z) {}
-};
+#include "Vector.h"       
+#include "DynamicArray.h"  
 
 class LandingZone {
 public:
-    float x_start = 0;
-    float x_end = 0;
-    float avg_height = 0;
-    float max_slope = 0;
-    float safety_score = 0;
+    float x_start = 0.0f;
+    float x_end = 0.0f;
+    float avg_height = 0.0f;
+    float max_slope = 0.0f;
+    float safety_score = 0.0f;
 };
 
 class Terrain {
 private:
-    std::vector<Point> surface;
+    DynamicArray<Vector> surface; 
 
-    static inline float cross2(float ax, float ay, float bx, float by) {
-        return ax * by - ay * bx;
-    }
-
-   
-    static bool raySeg(const Vector& O, const Vector& D, const Vector& A, const Vector& B, float& t_out, Vector& P_out){
+    static bool raySeg(const Vector& O, const Vector& D, const Vector& A, const Vector& B, float& t_out, Vector& P_out) {
         Vector E = B - A;
-        float denom = cross2(D.x, D.y, E.x, E.y);
-        if (std::fabs(denom) < 1e-7f) return false; 
+        float denom = D.cross(E);
+        if (std::fabs(denom) < 1e-7f) return false; // параллельны/почти параллельны
 
         Vector AO = A - O;
-        float t = cross2(AO.x, AO.y, E.x, E.y) / denom;
-        float u = cross2(AO.x, AO.y, D.x, D.y) / denom;
+        float t = AO.cross(E) / denom;
+        float u = AO.cross(D) / denom;
 
-        if (t < 0.0f) return false;
-        if (u < 0.0f || u > 1.0f) return false;
+        if (t < 0.0f) return false;          // пересечение позади луча
+        if (u < 0.0f || u > 1.0f) return false; // пересечение вне отрезка
 
         P_out = O + D * t;
         t_out = t;
@@ -49,10 +38,9 @@ private:
     }
 
 public:
-
     Terrain() = default;
 
-  
+    // Пересечение луча с ломаной поверхностью (surface).
     bool IntersectRay(Vector origin, Vector dir, Vector& hitPoint) const {
         if (surface.size() < 2) return false;
 
@@ -63,11 +51,11 @@ public:
         float bestT = 1e30f;
         Vector bestP;
 
-        for (size_t i = 0; i + 1 < surface.size(); ++i) {
-            const Point& p0 = surface[i];
-            const Point& p1 = surface[i + 1];
-            Vector A(p0.x, p0.z);
-            Vector B(p1.x, p1.z);
+        for (int i = 0; i + 1 < surface.size(); ++i) {
+            const Vector& p0 = surface[i];
+            const Vector& p1 = surface[i + 1];
+            Vector A(p0.x, p0.y);
+            Vector B(p1.x, p1.y);
 
             float t;
             Vector P;
@@ -86,42 +74,42 @@ public:
 
     void Clear() { surface.clear(); }
 
-    void AddPoint(float x, float z){
-        surface.emplace_back(x, z);
-        std::sort(surface.begin(), surface.end(), [](const Point& a, const Point& b){ return a.x < b.x; });
+    void AddPoint(float x, float z) {
+        surface.emplace_back(x, z); // z кладем в Vector.y
+        std::sort(surface.begin(), surface.end(), [](const Vector& a, const Vector& b) { return a.x < b.x; });
     }
 
-    int GetPointCount() const { return (int)surface.size(); }
+    int GetPointCount() const { return surface.size(); }
 
-    Point GetPoint(int i) const {
-        if (i >= 0 && i < (int)surface.size()) return surface[i];
-        return Point();
+    Vector GetPoint(int i) const {
+        if (i >= 0 && i < surface.size()) return surface[i];
+        return Vector();
     }
 
-   
-    float GetHeightAt(float x) const{
+    // Высота рельефа в точке x: линейная интерполяция.
+    float GetHeightAt(float x) const {
         if (surface.empty()) return 0.0f;
-        if (surface.size() == 1) return surface[0].z;
+        if (surface.size() == 1) return surface[0].y;
 
-        if (x <= surface[0].x) return surface[0].z;
-        if (x >= surface.back().x) return surface.back().z;
+        if (x <= surface.front().x) return surface.front().y;
+        if (x >= surface.back().x)  return surface.back().y;
 
-        for (size_t i = 0; i + 1 < surface.size(); ++i){
-            const Point& p1 = surface[i];
-            const Point& p2 = surface[i+1];
+        for (int i = 0; i + 1 < surface.size(); ++i) {
+            const Vector& p1 = surface[i];
+            const Vector& p2 = surface[i + 1];
 
-            if (x >= p1.x && x <= p2.x){
+            if (x >= p1.x && x <= p2.x) {
                 float dx = p2.x - p1.x;
-                if (dx < 1e-5f) return p1.z;
+                if (dx < 1e-5f) return p1.y;
 
                 float t = (x - p1.x) / dx;
-                return p1.z + t * (p2.z - p1.z);
+                return p1.y + t * (p2.y - p1.y);
             }
         }
-        return surface.back().z;
+        return surface.back().y;
     }
- 
 
+    // Нормаль к поверхности в точке x (по производной dz/dx).
     Vector GetNormalAt(float x) const {
         const float dx = 2.5f;
         float z1 = GetHeightAt(x - dx);
@@ -132,12 +120,11 @@ public:
         return n.norm();
     }
 
-   
-    float GetMinHeightInRange(float x1, float x2) const{
+    float GetMinHeightInRange(float x1, float x2) const {
         float min_z = +1e9f;
 
-        for (const auto& p : surface){
-            if (p.x >= x1 && p.x <= x2) min_z = std::min(min_z, p.z);
+        for (const auto& p : surface) {
+            if (p.x >= x1 && p.x <= x2) min_z = std::min(min_z, p.y);
         }
 
         if (min_z == +1e9f) {
@@ -147,7 +134,8 @@ public:
         return min_z;
     }
 
-    float GetSlopeAt(float x) const{
+    // Наклон поверхности в точке x (в градусах).
+    float GetSlopeAt(float x) const {
         float dx = 5.0f;
         float z1 = GetHeightAt(x - dx);
         float z2 = GetHeightAt(x + dx);
@@ -156,22 +144,21 @@ public:
         return std::fabs(slope * 180.0f / 3.14159265359f);
     }
 
-    bool IsInSafeZone(float x, float slope_threshold) const{
+    bool IsInSafeZone(float x, float slope_threshold) const {
         return GetSlopeAt(x) < slope_threshold;
     }
 
-    bool IsBelowTerrain(float x, float z) const{
+    bool IsBelowTerrain(float x, float z) const {
         return z <= GetHeightAt(x);
     }
 
-    bool CheckCollisionPolygon(const std::vector<Point>& pts) const{
-        for (auto& p : pts){
-            if (IsBelowTerrain(p.x, p.z)) return true;
+    bool CheckCollisionPolygon(const std::vector<Vector>& pts) const {
+        for (const auto& p : pts) {
+            if (IsBelowTerrain(p.x, p.y)) return true;
         }
         return false;
     }
 
-  
     std::vector<LandingZone> FindSafeLandingZones(float world_width) const {
         std::vector<LandingZone> zones;
         if (surface.size() < 2) return zones;
@@ -184,36 +171,34 @@ public:
         float x_max = surface.back().x;
 
         bool in_zone = false;
-        float zone_start = 0;
+        float zone_start = 0.0f;
 
-        for (float x = x_min; x <= x_max; x += STEP){
+        for (float x = x_min; x <= x_max; x += STEP) {
             float slope = GetSlopeAt(x);
 
-            if (slope < THRESHOLD_SLOPE){
-                if (!in_zone){
+            if (slope < THRESHOLD_SLOPE) {
+                if (!in_zone) {
                     in_zone = true;
                     zone_start = x;
                 }
-            }
-            else{
-                if (in_zone){
+            } else {
+                if (in_zone) {
                     float x_end = x;
                     float w = x_end - zone_start;
 
-                    if (w >= MIN_ZONE_WIDTH){
+                    if (w >= MIN_ZONE_WIDTH) {
                         LandingZone z;
                         z.x_start = zone_start;
                         z.x_end = x_end;
 
-                        // оценка высоты/наклона внутри зоны
                         const float mid = 0.5f * (zone_start + x_end);
                         z.avg_height = GetHeightAt(mid);
 
                         float maxSlope = 0.0f;
-                        for (float xs = zone_start; xs <= x_end; xs += 1.0f) maxSlope = std::max(maxSlope, GetSlopeAt(xs));
+                        for (float xs = zone_start; xs <= x_end; xs += 1.0f)
+                            maxSlope = std::max(maxSlope, GetSlopeAt(xs));
                         z.max_slope = maxSlope;
 
-                        // ширина + близость + плоскость
                         const float world_center = world_width * 0.5f;
                         const float distPenalty = std::fabs(mid - world_center) * 0.02f;
                         const float widthBonus = std::min(50.0f, w * 0.8f);
@@ -227,19 +212,24 @@ public:
             }
         }
 
-        std::sort(zones.begin(), zones.end(), [](const LandingZone& a, const LandingZone& b) { return a.safety_score > b.safety_score; });
+        std::sort(zones.begin(), zones.end(),
+                  [](const LandingZone& a, const LandingZone& b) { return a.safety_score > b.safety_score; });
+
+        // если закончились внутри зоны
         if (in_zone) {
             float x_end = x_max;
             float w = x_end - zone_start;
             if (w >= MIN_ZONE_WIDTH) {
                 LandingZone z;
                 z.x_start = zone_start;
-                z.x_end  = x_end;
-                const float mid = 0.5f *(zone_start + x_end);
+                z.x_end = x_end;
+
+                const float mid = 0.5f * (zone_start + x_end);
                 z.avg_height = GetHeightAt(mid);
 
                 float maxSlope = 0.0f;
-                for (float xs = zone_start; xs <= x_end; xs += 1.0f) maxSlope = std::max(maxSlope, GetSlopeAt(xs));
+                for (float xs = zone_start; xs <= x_end; xs += 1.0f)
+                    maxSlope = std::max(maxSlope, GetSlopeAt(xs));
                 z.max_slope = maxSlope;
 
                 const float world_center = world_width * 0.5f;
@@ -251,6 +241,7 @@ public:
                 zones.push_back(z);
             }
         }
+
         return zones;
     }
 };
